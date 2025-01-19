@@ -45,7 +45,6 @@
       border-radius: 8px;
       display: none;
       text-align: center;
-      z-index: 9999;
     }
     #debug {
       position: absolute;
@@ -59,48 +58,14 @@
       max-width: 80%;
       word-wrap: break-word;
       display: none;
-      z-index: 9999;
     }
-
-    /* ---- NEW BADGE & ARROW STYLES ---- */
-    #distance-badge {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: rgba(255, 0, 0, 0.8);
-      color: white;
-      padding: 12px;
-      border-radius: 20px;
-      font-size: 16px;
-      font-weight: bold;
-      z-index: 9999;
-    }
-    #arrow-container {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 9999;
-    }
-    #direction-arrow {
-      width: 80px;
-      height: auto;
-      transform-origin: 50% 50%;
-      transition: transform 0.25s ease;
-    }
+	
   </style>
 </head>
 <body>
   <button id="enter-ar">Enter AR</button>
   <div id="loading">Loading waypoints...</div>
   <div id="debug"></div>
-
-  <!-- NEW: Distance Badge and Arrow -->
-  <div id="distance-badge">0m</div>
-  <div id="arrow-container">
-    <!-- Make sure arrow.png is available or change this URL -->
-    <img id="direction-arrow" src="arrow.png" alt="Direction Arrow" />
-  </div>
 
   <script type="module">
     import * as THREE from 'three';
@@ -114,6 +79,7 @@
       alpha: true,
       logarithmicDepthBuffer: true
     });
+    
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.xr.enabled = true;
@@ -127,95 +93,28 @@
       debug.style.display = 'block';
     }
 
-    // Lighting
+    // Enhanced lighting
     const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(0, 10, 0);
     scene.add(hemisphereLight);
     scene.add(directionalLight);
 
-    // Waypoint configuration
+    // Waypoint configuration (you can still use different colors per type if desired)
     const waypointConfig = {
-      turn:        { color: 0xff0000 },
-      turn_warning:{ color: 0xffaa00 },
-      path:        { color: 0x00ff00 },
-      default:     { color: 0x0000ff }
-    };
-
-    const loadingElement = document.getElementById('loading');
-    let finalWaypoint = null;  // We'll store the last waypoint here for the distance countdown
-
-    // Utility: Distance in meters
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371000; // Earth's radius in meters
-      const φ1 = lat1 * Math.PI / 180;
-      const φ2 = lat2 * Math.PI / 180;
-      const Δφ = (lat2 - lat1) * Math.PI / 180;
-      const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ/2) * Math.sin(Δλ/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c; // Distance in meters
-    }
-
-    // Utility: Bearing in degrees from (lat1,lng1) to (lat2,lng2)
-    function computeBearing(lat1, lon1, lat2, lon2) {
-      const φ1 = THREE.MathUtils.degToRad(lat1);
-      const φ2 = THREE.MathUtils.degToRad(lat2);
-      const λ1 = THREE.MathUtils.degToRad(lon1);
-      const λ2 = THREE.MathUtils.degToRad(lon2);
-
-      const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
-      const x = Math.cos(φ1) * Math.sin(φ2) -
-                Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
-      let brng = Math.atan2(y, x);
-      brng = THREE.MathUtils.radToDeg(brng);
-      // Normalize: 0 <= brng < 360
-      brng = (brng + 360) % 360;
-      return brng;
-    }
-
-    function calculateRelativePosition(lat1, lon1, lat2, lon2) {
-      if (!lat1 || !lon1 || !lat2 || !lon2) {
-        log("Invalid coordinates provided");
-        return { x: 0, z: 0, distance: 0 };
+      turn: {
+        color: 0xff0000
+      },
+      turn_warning: {
+        color: 0xffaa00
+      },
+      path: {
+        color: 0x00ff00
+      },
+      default: {
+        color: 0x0000ff
       }
-
-      const R = 6371000;
-      const φ1 = lat1 * Math.PI / 180;
-      const φ2 = lat2 * Math.PI / 180;
-      const Δφ = (lat2 - lat1) * Math.PI / 180;
-      const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-      const z = Math.sin(Δφ) * R;
-      const x = Math.cos(φ1) * Math.sin(Δλ) * R;
-      const distance = calculateDistance(lat1, lon1, lat2, lon2);
-      return { x, z, distance };
-    }
-
-    function createPathSegment(start, end, color = 0x00ff00) {
-      const dx = end.x - start.x;
-      const dz = end.z - start.z;
-      const distance = Math.sqrt(dx * dx + dz * dz);
-
-      // A "thick line" box geometry
-      const geometry = new THREE.BoxGeometry(distance, 1, 1);
-      const material = new THREE.MeshStandardMaterial({ color });
-      const segment = new THREE.Mesh(geometry, material);
-
-      // Position at midpoint
-      const midpointX = start.x + dx / 2;
-      const midpointZ = start.z + dz / 2;
-      segment.position.set(midpointX, 0, midpointZ);
-
-      // Rotate around Y based on angle
-      const angle = Math.atan2(dz, dx);
-      segment.rotation.y = -angle;
-
-      return segment;
-    }
+    };
 
     async function loadWaypoints() {
       const routeId = new URLSearchParams(window.location.search).get('routeId');
@@ -235,7 +134,73 @@
       }
     }
 
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000; // Earth's radius in meters
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δφ = (lat2 - lat1) * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+               Math.cos(φ1) * Math.cos(φ2) *
+               Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      
+      return R * c; // Distance in meters
+    }
+
+    function calculateRelativePosition(lat1, lon1, lat2, lon2) {
+      if (!lat1 || !lon1 || !lat2 || !lon2) {
+        log("Invalid coordinates provided");
+        return { x: 0, z: 0, distance: 0 };
+      }
+
+      const R = 6371000;
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δφ = (lat2 - lat1) * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+      // z-direction from delta in latitude
+      const z = Math.sin(Δφ) * R;
+      // x-direction from delta in longitude
+      const x = Math.cos(φ1) * Math.sin(Δλ) * R;
+      const distance = calculateDistance(lat1, lon1, lat2, lon2);
+
+      return { x, z, distance };
+    }
+
+    
+    function createPathSegment(start, end, color = 0x00ff00) {
+      // Calculate the difference
+      const dx = end.x - start.x;
+      const dz = end.z - start.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+
+      // Create a box geometry that represents the path segment:
+      //   length  = distance between start and end
+      //   height  = a small thickness, e.g. 0.02
+      //   width   = how “wide” you want the path to be
+      const geometry = new THREE.BoxGeometry(distance, 1, 1);
+      const material = new THREE.MeshStandardMaterial({ color });
+
+      const segment = new THREE.Mesh(geometry, material);
+
+      // Position the segment at the midpoint between start and end
+      const midpointX = start.x + dx / 2;
+      const midpointZ = start.z + dz / 2;
+      segment.position.set(midpointX, 0, midpointZ);
+
+      
+      // We compute the angle and rotate around Y.
+      const angle = Math.atan2(dz, dx);
+      segment.rotation.y = -angle;
+
+      return segment;
+    }
+
     async function initWaypoints() {
+      const loadingElement = document.getElementById('loading');
       loadingElement.style.display = 'block';
       debug.textContent = '';
 
@@ -244,18 +209,22 @@
         if (!waypoints || waypoints.length === 0) {
           throw new Error('No waypoints found');
         }
-        log(`Total waypoints from server: ${waypoints.length}`);
 
-        // Simple distance-based filtering
+        log(`Total waypoints from server: ${waypoints.length}`);
+        
+        // Minimal distance-based filtering (similar to your original logic):
         const filteredWaypoints = waypoints.filter((wp, index) => {
           if (!wp.lat || !wp.lng) return false;
           if (index === 0) return true; // keep first
           if (index === waypoints.length - 1) return true; // keep last
 
           const prevWp = waypoints[index - 1];
-          const distance = calculateDistance(prevWp.lat, prevWp.lng, wp.lat, wp.lng);
+          const distance = calculateDistance(
+            prevWp.lat, prevWp.lng,
+            wp.lat, wp.lng
+          );
 
-          // Keep if more than 0.5m away or special type
+          // Keep if more than 0.5m away or if it’s a special type
           if (distance > 0.5) return true;
           if (wp.type === 'turn' || wp.type === 'turn_warning') return true;
           return false;
@@ -264,10 +233,7 @@
         log(`Filtered down to ${filteredWaypoints.length} waypoints`);
         console.log("Filtered waypoints:", filteredWaypoints);
 
-        // Save the last waypoint for distance countdown
-        finalWaypoint = filteredWaypoints[filteredWaypoints.length - 1];
-
-        // Compute relative positions
+        // Compute positions relative to the first waypoint
         const positions = [];
         let firstWaypoint = null;
         filteredWaypoints.forEach((wp, index) => {
@@ -285,20 +251,27 @@
           }
         });
 
-        // Scale down
+        // Scale down so they are not too far apart in the AR space
         const scale = 0.1;
         const markerPoints = positions.map((pos, idx) => {
+          console.log(
+            `Filtered WP #${idx}, lat: ${filteredWaypoints[idx]?.lat}, ` +
+            `lng: ${filteredWaypoints[idx]?.lng}, x: ${pos.x}, z: ${pos.z}`
+          );
           return {
             x: pos.x * scale,
             z: pos.z * scale
           };
         });
 
-        // Create path segments
+        // Create path segments for consecutive waypoints
         let segmentsCreated = 0;
         for (let i = 0; i < markerPoints.length - 1; i++) {
+          // Optionally pick a color based on the type of the “starting” waypoint
           const wpType = filteredWaypoints[i]?.type;
           const config = waypointConfig[wpType] || waypointConfig.default;
+          
+          // Create a thick horizontal line from markerPoints[i] to markerPoints[i+1]
           const segment = createPathSegment(
             markerPoints[i],
             markerPoints[i + 1],
@@ -344,46 +317,14 @@
       }
     }
 
+    // Event listeners
     document.getElementById("enter-ar").addEventListener("click", async () => {
       await startAR();
       await initWaypoints();
       document.getElementById("enter-ar").style.display = "none";
-
-      // Start watching user position to update arrow and distance
-      navigator.geolocation.watchPosition(
-        (pos) => {
-          const userLat = pos.coords.latitude;
-          const userLng = pos.coords.longitude;
-
-          // Update distance badge if we have a final waypoint
-          if (finalWaypoint && finalWaypoint.lat && finalWaypoint.lng) {
-            const dist = calculateDistance(
-              userLat, userLng,
-              finalWaypoint.lat, finalWaypoint.lng
-            );
-            document.getElementById("distance-badge").textContent =
-              Math.round(dist) + "m";
-
-            // Update arrow rotation
-            const bearing = computeBearing(
-              userLat, userLng,
-              finalWaypoint.lat, finalWaypoint.lng
-            );
-
-            // If your arrow image points "up" at 0°, no offset needed;
-            // adjust if the arrow image is oriented differently.
-            document.getElementById("direction-arrow").style.transform =
-              `rotate(${bearing}deg)`;
-          }
-        },
-        (error) => {
-          log("Geolocation error: " + error.message);
-        },
-        { enableHighAccuracy: true }
-      );
     });
 
-    // Resize handler
+    // Only update size if not in XR mode
     window.addEventListener("resize", () => {
       if (!renderer.xr.isPresenting) {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -392,5 +333,6 @@
       }
     });
   </script>
+  
 </body>
 </html>
